@@ -1,0 +1,11 @@
+{
+  "name": "trading-panel",
+  "private": true,
+  "description": "Panel personal de análisis de tickers",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "30.1.1"
+  }
+}

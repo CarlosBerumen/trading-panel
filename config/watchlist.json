@@ -1,0 +1,13 @@
+[
+  {"symbol": "SPY", "name": "ETF S&P 500", "market": "us"},
+  {"symbol": "QQQ", "name": "ETF Nasdaq 100", "market": "us"},
+  {"symbol": "TLT", "name": "ETF bonos del Tesoro a 20 años o más", "market": "us"},
+  {"symbol": "NVDA", "name": "NVIDIA", "market": "us"},
+  {"symbol": "MSFT", "name": "Microsoft", "market": "us"},
+  {"symbol": "STX", "name": "Seagate", "market": "us"},
+  {"symbol": "TTD", "name": "The Trade Desk", "market": "us"},
+  {"symbol": "BTCUSDT", "name": "Bitcoin", "market": "cr"},
+  {"symbol": "ETHUSDT", "name": "Ethereum", "market": "cr"},
+  {"symbol": "WALMEX.MX", "name": "Walmart de México", "market": "mx"},
+  {"symbol": "CEMEXCPO.MX", "name": "Cemex", "market": "mx"}
+]
