@@ -41,10 +41,10 @@ test('estructura segura: sin scripts en línea y con CSP estricta', () => {
   const dom = new JSDOM(html);
   assert.equal(dom.window.document.querySelectorAll('script:not([src])').length, 0);
   const csp = dom.window.document.querySelector('meta[http-equiv="Content-Security-Policy"]').content;
-  assert.match(csp, /default-src 'none'/); assert.match(csp, /script-src 'self'/); assert.match(csp, /connect-src 'self'/);
+  assert.match(csp, /default-src 'none'/); assert.match(csp, /script-src 'self'/); assert.match(csp, /connect-src 'self' https:\/\/\*\.workers\.dev;/);
   assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*unsafe-inline/);
   assert.doesNotMatch(html, /\son\w+=/i);
-  assert.doesNotMatch(html + fs.readFileSync(path.join(SITE, 'app.js'), 'utf8'), /https?:\/\/(?!www\.w3\.org)/);
+  assert.doesNotMatch(html + fs.readFileSync(path.join(SITE, 'app.js'), 'utf8'), /https?:\/\/(?!www\.w3\.org|\*\.workers\.dev)/);
 });
 
 test('carga sola el ticker y muestra el análisis técnico sin errores', async () => {
@@ -59,7 +59,7 @@ test('carga sola el ticker y muestra el análisis técnico sin errores', async (
   assert.match(d.getElementById('t').textContent, /Momentum 12-1/);
   assert.equal(d.querySelector('#tabs [aria-selected="true"]').textContent, 'Técnico');
   assert.ok(d.querySelector('#t svg path'));
-  assert.deepEqual(pedidos.slice(0, 2), ['data/manifest.json', 'data/SPY.json']);
+  assert.ok(pedidos.includes('data/manifest.json') && pedidos.indexOf('data/SPY.json') > pedidos.indexOf('data/manifest.json'));
   d.getElementById('sym').value = 'BTCUSDT.json';
   d.getElementById('sym').dispatchEvent(new w.Event('change'));
   await new Promise(r => setTimeout(r, 50));
@@ -97,4 +97,43 @@ test('sin datos automáticos queda disponible el CSV propio', async () => {
   await new Promise(r => setTimeout(r, 50));
   assert.match(w.document.getElementById('ast').textContent, /CSV/);
   assert.equal(w.document.getElementById('autob').hidden, true);
+});
+
+test('v2: busca cualquier ticker, muestra encabezado, veredicto, costos y noticias', async () => {
+  const API = 'https://panel.carlos.workers.dev';
+  const { JSDOM: J, VirtualConsole: VC } = require('jsdom');
+  const errores = [], vc = new VC(); vc.on('jsdomError', e => errores.push(e.message));
+  const dom = new J(fs.readFileSync(path.join(SITE, 'index.html'), 'utf8'), { url: 'http://localhost/', runScripts: 'dangerously', virtualConsole: vc, pretendToBeVisual: true });
+  const w = dom.window, pedidos = [];
+  const ok = o => ({ ok: true, status: 200, json: async () => o });
+  w.fetch = async u => {
+    pedidos.push(u);
+    if (u === 'config.json') return ok({ api: API });
+    if (u === 'data/crypto.json') return ok([{ s: 'NVXUSDT', b: 'NVX' }]);
+    if (u.startsWith(API + '/search')) return ok([{ s: 'NVDA', n: 'NVIDIA', x: 'NASDAQ' }, { s: 'WALMEX.MX', n: 'Walmart de Mexico', x: 'Mexico' }]);
+    if (u.startsWith(API + '/prices')) return ok({ ...datos('NVDA'), name: 'NVIDIA <b>Corp</b>', currency: 'USD', exchange: 'NMS' });
+    if (u.startsWith(API + '/news')) return ok([{ title: 'Sube NVDA', link: 'https://ok.example/a', src: 'Fuente', date: 'hoy' }, { title: 'Malo', link: 'javascript:alert(1)' }]);
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  for (const f of ['core.js', 'app.js']) { const el = w.document.createElement('script'); el.textContent = fs.readFileSync(path.join(SITE, f), 'utf8'); w.document.body.appendChild(el); }
+  await new Promise(r => setTimeout(r, 50));
+  const d = w.document, tk = d.getElementById('tk');
+  tk.value = 'nv'; tk.dispatchEvent(new w.Event('input'));
+  await new Promise(r => setTimeout(r, 450));
+  const li = [...d.querySelectorAll('#sr li')];
+  assert.deepEqual(li.map(x => x.textContent.split(' · ')[0]), ['NVXUSDT', 'NVDA', 'WALMEX.MX']);
+  li[1].click();
+  for (let i = 0; i < 50 && !d.querySelector('#t .row'); i++) await new Promise(r => setTimeout(r, 20));
+  assert.match(d.getElementById('qh').textContent, /NVIDIA <b>Corp<\/b>/);          // texto, no HTML
+  assert.equal(d.querySelectorAll('#qh b').length, 1);
+  assert.match(d.getElementById('qh').textContent, /Rango de 52 semanas/);
+  assert.match(d.getElementById('b').textContent, /Veredicto en 4 preguntas/);
+  assert.match(d.getElementById('b').textContent, /Si hubieras invertido 10,000/);
+  assert.equal(d.querySelectorAll('#b table tr').length > 4, true);
+  d.querySelector('#tabs [data-i="2"]').click();
+  for (let i = 0; i < 50 && !d.querySelector('#nw a'); i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(d.querySelectorAll('#nw a').length, 1);                                // el enlace javascript: se descarta
+  assert.equal(d.querySelector('#nw a').rel, 'noopener noreferrer');
+  assert.ok(pedidos.every(u => !/\.\./.test(u)));
+  assert.deepEqual(errores, []);
 });

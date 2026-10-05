@@ -71,6 +71,13 @@ def fetch_yahoo(symbol, years=YEARS, get=http_json):
     return rows
 
 
+def fetch_crypto_list(get=http_json):
+    data = get("https://data-api.binance.vision/api/v3/exchangeInfo")
+    out = [{"s": x["symbol"], "b": x["baseAsset"]} for x in data["symbols"]
+           if x.get("status") == "TRADING" and x.get("quoteAsset") == "USDT" and SAFE.match(x["symbol"])]
+    return sorted(out, key=lambda r: r["s"])
+
+
 def validate(rows, today=None):
     today = today or datetime.now(timezone.utc).date()
     if len(rows) < MIN_ROWS:
@@ -119,7 +126,7 @@ def load_watchlist(path):
     return items
 
 
-def main(root=ROOT, fetchers=None, now=None, pause=0.5):
+def main(root=ROOT, fetchers=None, now=None, pause=0.5, crypto_list=None):
     now = now or datetime.now(timezone.utc)
     fetchers = fetchers or {"cr": ("binance", fetch_binance), "us": ("yahoo", fetch_yahoo), "mx": ("yahoo", fetch_yahoo)}
     out = Path(root) / "site" / "data"
@@ -142,8 +149,15 @@ def main(root=ROOT, fetchers=None, now=None, pause=0.5):
                             "file": f.name, "rows": len(d["c"]), "last": d["t"][-1]})
         time.sleep(pause)
     write_atomic(out / "manifest.json", {"updated": now.isoformat(timespec="seconds"), "symbols": entries})
+    if crypto_list:
+        try:
+            lista = crypto_list()
+            if len(lista) >= 50:
+                write_atomic(out / "crypto.json", lista)
+        except Exception as e:
+            print("FALLO lista de cripto", e, file=sys.stderr)
     return ok
 
 
 if __name__ == "__main__":
-    sys.exit(0 if main() > 0 else 1)
+    sys.exit(0 if main(crypto_list=fetch_crypto_list) > 0 else 1)

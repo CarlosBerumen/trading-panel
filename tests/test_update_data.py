@@ -126,3 +126,24 @@ def test_lista_rechaza_entradas_inseguras(tmp_path, malo):
 def test_lista_real_es_valida():
     items = U.load_watchlist(U.ROOT / "config" / "watchlist.json")
     assert len({i["symbol"] for i in items}) == len(items)
+
+
+def test_lista_de_cripto_solo_usdt_activas():
+    datos = {"symbols": [
+        {"symbol": "BTCUSDT", "baseAsset": "BTC", "quoteAsset": "USDT", "status": "TRADING"},
+        {"symbol": "ETHBTC", "baseAsset": "ETH", "quoteAsset": "BTC", "status": "TRADING"},
+        {"symbol": "OLDUSDT", "baseAsset": "OLD", "quoteAsset": "USDT", "status": "BREAK"},
+        {"symbol": "MAL<>USDT", "baseAsset": "X", "quoteAsset": "USDT", "status": "TRADING"}]}
+    assert U.fetch_crypto_list(get=lambda url: datos) == [{"s": "BTCUSDT", "b": "BTC"}]
+
+
+def test_main_escribe_lista_de_cripto_y_tolera_su_fallo(tmp_path):
+    raiz = _proyecto(tmp_path, [{"symbol": "SPY", "name": "S&P", "market": "us"}])
+    f = {"us": ("yahoo", lambda s: rows())}
+    grande = [{"s": "A%dUSDT" % i, "b": "A%d" % i} for i in range(60)]
+    U.main(raiz, fetchers=f, now=NOW, pause=0, crypto_list=lambda: grande)
+    assert len(json.loads((raiz / "site/data/crypto.json").read_text())) == 60
+    def roto():
+        raise RuntimeError("451")
+    assert U.main(raiz, fetchers=f, now=NOW, pause=0, crypto_list=roto) == 1
+    assert len(json.loads((raiz / "site/data/crypto.json").read_text())) == 60

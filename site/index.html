@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Panel de análisis de tickers</title>
+<html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://*.workers.dev; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Panel de análisis de tickers</title>
 <style>
 :root{--bg:#f5f7fa;--sf:#fff;--fg:#17202b;--mut:#5b697a;--ln:#d9dfe7;--pri:#0b6b8a;--ok:#1d7f55;--wn:#a96a0f;--bd:#b23b2c;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0e1621;--sf:#152130;--fg:#e4ebf2;--mut:#93a3b5;--ln:#26364a;--pri:#55b8d8;--ok:#4cc08a;--wn:#e0a64a;--bd:#ef7b6b}}
@@ -16,7 +16,7 @@ input,textarea{font:inherit;color:var(--fg);background:var(--sf);border:1px soli
 input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--pri);outline-offset:1px}
 select{font:inherit;color:var(--fg);background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:8px 10px;max-width:100%}summary{cursor:pointer;margin:1rem 0;color:var(--pri)}
 textarea{width:100%;min-height:150px;font-family:ui-monospace,Consolas,monospace;font-size:.8rem}
-.tk{width:130px;font-weight:600}
+.tk{width:min(100%,280px);font-weight:600}
 button{font:inherit;cursor:pointer;color:var(--fg);background:var(--sf);border:1px solid var(--ln);border-radius:6px;padding:8px 12px}
 .seg{display:inline-flex;border:1px solid var(--ln);border-radius:6px;overflow:hidden}
 .seg button{border:0;border-radius:0}
@@ -41,13 +41,16 @@ label{display:block;font-size:.85rem;color:var(--mut);margin-bottom:3px}
 .chip.y{border-color:var(--ok);color:var(--ok)}.chip.n{border-color:var(--bd);color:var(--bd)}
 svg{width:100%;height:auto;display:block}
 .note{border-left:3px solid var(--wn);padding:6px 12px;margin:14px 0;color:var(--mut);font-size:.88rem}
+.qh{display:grid;grid-template-columns:1fr auto;gap:2px 16px;align-items:end;margin:10px 0 14px}.qn{font-size:1.1rem}.qp{text-align:right;font-size:1.3rem;font-variant-numeric:tabular-nums}.qr{grid-column:1/-1}
+#sr{list-style:none;margin:-6px 0 10px;padding:0;border:1px solid var(--ln);border-radius:6px;background:var(--sf);max-width:520px}#sr li{padding:8px 12px;cursor:pointer;border-bottom:1px solid var(--ln)}#sr li:last-child{border:0}#sr li:hover,#sr li:focus{background:var(--bg)}
 [hidden]{display:none!important}
 </style></head><body><div class="w">
 <div class="top"><div><h1>Panel de análisis de tickers</h1><div class="mut sm">Reglas tomadas de papers. Cada lectura indica cuánta evidencia la respalda.</div></div><button id="th">Tema</button></div>
-<div class="bar"><input id="tk" class="tk" placeholder="Ticker, ej. SPY" aria-label="Ticker" maxlength="12"><div class="seg" role="group" aria-label="Mercado"><button data-m="us" aria-pressed="true">EE. UU.</button><button data-m="mx" aria-pressed="false">México</button><button data-m="cr" aria-pressed="false">Cripto</button></div></div>
+<div class="bar"><input id="tk" class="tk" placeholder="Busca cualquier ticker o empresa" aria-label="Buscar ticker" maxlength="30" autocomplete="off"><div class="seg" role="group" aria-label="Mercado"><button data-m="us" aria-pressed="true">EE. UU.</button><button data-m="mx" aria-pressed="false">México</button><button data-m="cr" aria-pressed="false">Cripto</button></div></div>
+<ul id="sr" role="listbox" aria-label="Resultados de la búsqueda" hidden></ul><div id="qh"></div>
 <div class="tabs" role="tablist" id="tabs"></div>
 <section id="p0"><div id="autob" hidden><h2>Elige un ticker de tu lista</h2><div class="bar"><select id="sym" aria-label="Ticker de tu lista"></select></div></div><p id="ast" class="sm" role="status"></p><details><summary>Usar mis propios datos (CSV)</summary><h2>Carga datos diarios</h2><p class="mut">Pega o sube un CSV con fecha, apertura, máximo, mínimo, cierre y volumen (encabezados en inglés o español). Usa al menos 250 días para que todas las reglas se puedan calcular.</p><textarea id="csv" placeholder="Date,Open,High,Low,Close,Volume&#10;2024-01-02,100,101,99,100.5,123456"></textarea><div class="bar"><button class="btn" id="go">Analizar</button><button id="demo">Cargar datos de demostración</button><input type="file" id="file" accept=".csv,.txt" aria-label="Subir archivo CSV"></div><p id="msg" role="status"></p></details></section>
-<section id="p1" hidden><div id="t"></div><h2>Prueba de la regla con tus datos</h2><p class="mut sm">Regla de tendencia con medias móviles, una hipótesis que no está probada como tal en los papers: entra si el cierre supera la SMA 50 y la SMA 200, y la SMA 50 está sobre la SMA 200; sale si el cierre cae bajo la SMA 100.</p><div class="gr"><div><label for="cost">Costo por operación (puntos base)</label><input id="cost" type="number" value="10" min="0"></div></div><div id="b"></div></section>
+<section id="p1" hidden><div id="t"></div><h2>Prueba de la regla con tus datos</h2><p class="mut sm">Regla de tendencia con medias móviles, una hipótesis que no está probada como tal en los papers: entra si el cierre supera la SMA 50 y la SMA 200, y la SMA 50 está sobre la SMA 200; sale si el cierre cae bajo la SMA 100.</p><div class="gr"><div><label for="cost">Costo por operación (% del monto; comisión más spread)</label><input id="cost" type="number" value="0.1" min="0" step="0.05"></div></div><div id="b"></div></section>
 <section id="p2" hidden></section><section id="p3" hidden></section><section id="p4" hidden><div id="e"></div></section>
 <p class="note">Información técnica basada en investigación académica. No es asesoría de inversión ni una recomendación personalizada; los resultados pasados no garantizan los futuros.</p>
 </div><script src="core.js"></script><script src="app.js"></script></body></html>

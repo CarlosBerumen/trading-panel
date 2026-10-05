@@ -18,7 +18,7 @@ const rows=[['Tendencia',isNaN(s2)?'—':R.bull?'Alcista':'No alcista',isNaN(s2)
 ['Volatilidad anual',pc(R.v20),`Percentil ${Math.round(R.vp*100)} de su propio historial. ATR de 14 días: ${n2(R.atr)}.`,'vol'],
 ['Caída desde el máximo',pc(R.dd),`Caída máxima de todo el historial cargado: ${pc(R.mdd)}.`,'']];
 el.innerHTML=`<p class="note">${D.demo?'Datos sintéticos de demostración, no son un mercado real. ':''}Lectura informativa según reglas de papers.</p>`+rows.map(([a,v,t,g])=>`<div class="row"><div><b>${a}</b><div class="mut sm">${t}</div></div><div class="val">${v}</div>${g?bd(g):''}</div>`).join('')+`<h2>Precio y medias móviles</h2>`+chart([D.c,R.s50,R.s100,R.s200].map(a=>a.slice(i0)),['var(--fg)','var(--pri)','var(--wn)','var(--bd)'])+`<div class="sm mut">Cierre, SMA 50 (azul), SMA 100 (ámbar) y SMA 200 (rojo); últimos ${N-i0} días.</div>`;btr()}
-function btr(){if(!R){return}const o=bt(D.c,R,Math.max(0,+$('cost').value||0)/1e4),s=st(o.rs,R.A),h=st(o.bh,R.A);let e=1,g=1;const E=[1],B=[1];o.rs.forEach((r,i)=>{E.push(e*=1+r);B.push(g*=1+o.bh[i])});
+function btr(){if(!R){return}const o=bt(D.c,R,Math.max(0,+$('cost').value||0)/100),s=st(o.rs,R.A),h=st(o.bh,R.A);let e=1,g=1;const E=[1],B=[1];o.rs.forEach((r,i)=>{E.push(e*=1+r);B.push(g*=1+o.bh[i])});
 const w=(l,a,b)=>`<tr><td>${l}</td><td>${a}</td><td>${b}</td></tr>`,ci=x=>`${n2(x.sr-1.96*x.se)} a ${n2(x.sr+1.96*x.se)}`;
 $('b').innerHTML=`<table><tr><th></th><th>Regla</th><th>Comprar y mantener</th></tr>`+w('Retorno anual compuesto',pc(s.cagr),pc(h.cagr))+w('Volatilidad anual',pc(s.vol),pc(h.vol))+w('Sharpe (sin tasa libre)',n2(s.sr),n2(h.sr))+w('Intervalo 95% del Sharpe',ci(s),ci(h))+w('Caída máxima',pc(s.dd),pc(h.dd))+w('Operaciones',o.tr,'—')+w('Tiempo invertido',pc(o.inv),'100%')+`</table>`+chart([E,B],['var(--pri)','var(--mut)'])+`<div class="sm mut">Azul: regla. Gris: comprar y mantener.</div><p class="note">Se ejecuta al cierre de la señal y el costo se descuenta al cambiar de posición. Es una sola regla sin parámetros optimizados; cada variante que pruebes debe restar credibilidad al mejor resultado (Deflated Sharpe, Bailey y López de Prado). El intervalo supone retornos independientes y es orientativo.</p>`}
 const FR=[['Ingresos','rev',[0,1]],['Costo de ventas','cogs',[0,1]],['Utilidad neta (antes de extraordinarios)','ni',[0,1]],['Activos totales','ta',[0,1,2]],['Flujo de caja operativo','cfo',[0]],['Deuda de largo plazo (con porción circulante)','ltd',[0,1]],['Activo circulante','ca',[0,1]],['Pasivo circulante','cl',[0,1]],['Utilidades retenidas','re',[0]],['EBIT','ebit',[0]],['Capital contable','eq',[0]],['Pasivos totales','tl',[0]]];
@@ -71,3 +71,36 @@ m.symbols.forEach(s=>{const o=document.createElement('option');o.value=s.file;o.
 let last='';try{last=localStorage.getItem('sym')||''}catch(e){}if([...sel.options].some(o=>o.value===last))sel.value=last;
 sel.onchange=()=>pick(sel);$('autob').hidden=false;pick(sel)}catch(e){st.textContent='No hay datos automáticos en esta versión: usa tu propio CSV.'}}
 auto();
+
+/* v2: búsqueda de cualquier ticker, encabezado de cotización, noticias, veredicto y costos en % */
+let API='',META=null,CRY=[],SYM='',tmr;
+async function cfg(){try{const c=await jget('config.json');API=/^https:\/\/[\w.-]+\.workers\.dev$/.test(c.api||'')?c.api:''}catch(e){}try{CRY=await jget('data/crypto.json')}catch(e){}if(!Array.isArray(CRY))CRY=[]}
+function header(){const c=D.c,n=c.length,l=c[n-1],p=c[n-2],ch=l/p-1,w=c.slice(-252),hi=Math.max(...w),lo=Math.min(...w),m=META||{};
+$('qh').innerHTML=`<div class="qh"><div><b class="qn">${esc((m.name||SYM).slice(0,60))}</b><div class="mut sm">${esc(SYM)}${m.exchange?' · '+esc(m.exchange):''}${m.currency?' · '+esc(m.currency):''} · cierre diario, no en tiempo real</div></div><div class="qp">${n2(l)} <span style="color:var(--${ch>=0?'ok':'bd'})">${ch>=0?'+':''}${pc(ch)}</span></div><div class="mut sm qr">Rango de 52 semanas: ${n2(lo)} a ${n2(hi)}. El precio está al ${pc((l-lo)/(hi-lo||1))} de ese rango.</div></div>`}
+async function loadSym(sym,kind){const st=$('ast');if(!API){st.textContent='Falta conectar tu servicio gratuito: ver config.json.';return}
+st.textContent='Cargando '+sym+'…';
+try{const d=await jget(`${API}/${kind=='c'?'crypto':'prices'}?symbol=${encodeURIComponent(sym)}`);if(!validate(d))throw 0;
+mkt=kind=='c'||/(-USD|USDT)$/.test(sym)?'cr':/\.MX$/.test(sym)?'mx':'us';document.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m==mkt));
+D={c:d.c,h:d.h,l:d.l};META=d;SYM=String(d.symbol).slice(0,20);$('tk').value=SYM;$('sr').hidden=true;
+st.textContent=`${SYM}: último dato ${String(d.t[d.t.length-1]).slice(0,10)}`;st.style.color='var(--ok)';analyze();header();show(1)}
+catch(e){st.textContent='No pude cargar ese ticker. Revisa el símbolo o intenta más tarde.';st.style.color='var(--bd)'}}
+async function lookup(q){q=q.trim();const box=$('sr');if(q.length<2){box.hidden=true;return}const U=q.toUpperCase();
+const loc=CRY.filter(c=>c.s.startsWith(U)||c.b===U).slice(0,6).map(c=>({s:c.s,n:c.b+' contra USDT',x:'Binance',k:'c'}));let rem=[];
+if(API){try{rem=(await jget(`${API}/search?q=${encodeURIComponent(q)}`)).map(r=>({...r,k:'y'}))}catch(e){}}
+box.replaceChildren(...[...loc,...rem].map(r=>{const li=document.createElement('li');li.setAttribute('role','option');li.tabIndex=0;li.textContent=`${r.s} · ${r.n} · ${r.x}`;li.onclick=()=>loadSym(r.s,r.k);li.onkeydown=e=>{if(e.key=='Enter')li.onclick()};return li}));box.hidden=!box.children.length}
+$('tk').addEventListener('input',()=>{clearTimeout(tmr);tmr=setTimeout(()=>lookup($('tk').value),300)});
+$('tk').addEventListener('keydown',e=>{if(e.key=='Escape')$('sr').hidden=true});
+$('p2').insertAdjacentHTML('afterbegin','<h2>Noticias del ticker</h2><div id="nw" class="mut"></div><details><summary>Calculadora manual de calidad financiera (opcional)</summary></details>');
+{const dt=$('p2').querySelector('details');dt.append($('fm'),$('fx'))}
+async function news(){const el=$('nw');if(!API){el.textContent='Las noticias necesitan tu servicio gratuito: ver config.json.';return}if(!D){el.textContent='Elige un ticker primero.';return}
+const q=(((META&&META.name)||SYM).replace(/[^\p{L}\p{N} .&'-]/gu,'').slice(0,40)+(mkt=='cr'?' cripto':'')).trim();el.textContent='Cargando noticias…';
+try{const r=await jget(`${API}/news?q=${encodeURIComponent(q)}`);const it=r.filter(i=>/^https?:\/\//.test(i.link));
+if(!it.length){el.textContent='Sin noticias recientes.';return}
+el.replaceChildren(...it.map(i=>{const d=document.createElement('div'),a=document.createElement('a'),s=document.createElement('div'),w=document.createElement('div');d.className='row';a.href=i.link;a.textContent=i.title;a.target='_blank';a.rel='noopener noreferrer';s.className='mut sm';s.textContent=`${i.src||''} · ${i.date||''}`;w.append(a,s);d.append(w);return d}))}
+catch(e){el.textContent='No pude cargar noticias ahora.'}}
+function fun(){news();const cr=mkt=='cr';$('fx').hidden=cr;if(!cr)fcalc()}
+const _b=btr;btr=function(){_b();ext()};$('cost').oninput=btr;
+function ext(){if(!R||!D)return;const k=Math.max(0,+$('cost').value||0)/100,o=bt(D.c,R,k),s=st(o.rs,R.A),h=st(o.bh,R.A),y=o.rs.length/R.A,w=[0,.001,.0025,.005].map(x=>st(bt(D.c,R,x).rs,R.A)),f=v=>v.toLocaleString('es-MX',{maximumFractionDigits:0});
+const lo=s.sr-1.96*s.se,q=[[s.sr>h.sr,'¿La ganancia compensa el riesgo?','Su Sharpe es '+(s.sr>h.sr?'mayor':'menor')+' que el de comprar y mantener.'],[lo>0,'¿Se distingue del azar?','El intervalo del Sharpe '+(lo>0?'no incluye':'incluye')+' el cero.'],[s.dd>h.dd,'¿Reduce la caída máxima?','Caída de '+pc(s.dd)+' frente a '+pc(h.dd)+'.'],[o.tr>=30&&y>=5,'¿Hay suficientes datos?',o.tr+' operaciones en '+n2(y,1)+' años (se piden al menos 30 y 5).']];
+$('b').insertAdjacentHTML('afterbegin','<h2>Veredicto en 4 preguntas</h2>'+q.map(([ok,t,d])=>`<div class="row"><div><b>${t}</b><div class="mut sm">${d}</div></div><div class="val" style="color:var(--${ok?'ok':'bd'})">${ok?'Sí':'No'}</div></div>`).join('')+`<h2>Si hubieras invertido 10,000</h2><div class="row"><div><b>Con la regla</b></div><div class="val">${f(1e4*Math.pow(1+s.cagr,y))}</div></div><div class="row"><div><b>Comprando y manteniendo</b></div><div class="val">${f(1e4*Math.pow(1+h.cagr,y))}</div></div><h2>¿Y si los costos fueran otros?</h2><table><tr><th>Costo por operación</th><th>Retorno anual</th><th>Sharpe</th></tr>`+w.map((x,i)=>`<tr><td>${['0%','0.1%','0.25%','0.5%'][i]}</td><td>${pc(x.cagr)}</td><td>${n2(x.sr)}</td></tr>`).join('')+'</table>')}
+cfg();
