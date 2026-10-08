@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ["site/**", "scripts/**", "config/**", "tests/**", ".github/workflows/deploy.yml"]
+    paths: ["site/**", "scripts/**", "config/**", "tests/**", "worker/**", ".github/workflows/deploy.yml"]
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -31,6 +31,12 @@ jobs:
           npm test
       - name: Descargar y validar datos
         run: python scripts/update_data.py
+      - name: Resumen semanal de J.P. Morgan (opcional)
+        continue-on-error: true
+        run: |
+          python -m pip install "pypdf>=4,<7"
+          python scripts/pdf_text.py "https://am.jpmorgan.com/content/dam/jpm-am-aem/americas/us/en/insights/market-insights/wmr/weekly_market_recap.pdf" /tmp/weekly.txt
+          node scripts/weekly.mjs /tmp/weekly.txt "https://am.jpmorgan.com/content/dam/jpm-am-aem/americas/us/en/insights/market-insights/wmr/weekly_market_recap.pdf"
       - name: Guardar datos nuevos
         run: |
           git config user.name "github-actions[bot]"
