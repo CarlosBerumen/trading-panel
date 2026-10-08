@@ -44,7 +44,10 @@ test('estructura segura: sin scripts en línea y con CSP estricta', () => {
   assert.match(csp, /default-src 'none'/); assert.match(csp, /script-src 'self'/); assert.match(csp, /connect-src 'self' https:\/\/\*\.workers\.dev;/);
   assert.doesNotMatch(csp, /unsafe-eval|script-src[^;]*unsafe-inline/);
   assert.doesNotMatch(html, /\son\w+=/i);
-  assert.doesNotMatch(html + fs.readFileSync(path.join(SITE, 'app.js'), 'utf8'), /https?:\/\/(?!www\.w3\.org|\*\.workers\.dev)/);
+  const app = fs.readFileSync(path.join(SITE, 'app.js'), 'utf8');
+  assert.doesNotMatch(html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, ''), /https?:\/\/(?!www\.w3\.org)/);   // sin recursos externos en el HTML
+  assert.doesNotMatch(app, /fetch\(\s*['"`]https?:/);                                                                 // ninguna petición directa a otros sitios
+  assert.doesNotMatch(app, /\beval\(|new Function\(|document\.write|XMLHttpRequest|WebSocket|\.innerHTML\s*=\s*[^;]*\+\s*(?:m|d|r|i)\./);
 });
 
 test('carga sola el ticker y muestra el análisis técnico sin errores', async () => {
@@ -135,5 +138,54 @@ test('v2: busca cualquier ticker, muestra encabezado, veredicto, costos y notici
   assert.equal(d.querySelectorAll('#nw a').length, 1);                                // el enlace javascript: se descarta
   assert.equal(d.querySelector('#nw a').rel, 'noopener noreferrer');
   assert.ok(pedidos.every(u => !/\.\./.test(u)));
+  assert.deepEqual(errores, []);
+});
+
+test('v3: catálogo de mercados, resumen de decisión, moneda, opciones, bonos y paneles de Fundamental', async () => {
+  const API = 'https://panel.carlos.workers.dev';
+  const { JSDOM: J, VirtualConsole: VC } = require('jsdom');
+  const errores = [], vc = new VC(); vc.on('jsdomError', e => errores.push(e.message));
+  const dom = new J(fs.readFileSync(path.join(SITE, 'index.html'), 'utf8'), { url: 'http://localhost/', runScripts: 'dangerously', virtualConsole: vc, pretendToBeVisual: true });
+  const w = dom.window, d = w.document, pedidos = [];
+  const ok = o => ({ ok: true, status: 200, json: async () => o });
+  const tem = [{ id: 'chips', titulo: 'Semiconductores', dir: 'up', activos: [{ s: 'NVDA', n: 'NVIDIA', e: 'beneficio' }] }];
+  w.fetch = async u => {
+    pedidos.push(u);
+    if (u === 'config.json') return ok({ api: API });
+    if (u === 'data/crypto.json') return ok([]);
+    if (u === 'data/weekly.json') return ok({ url: 'https://am.jpmorgan.com/x.pdf', fecha: 'October 02, 2026', actualizado: '2026-10-05T00:00:00Z', temas: tem, empresas: [], aviso: 'aviso' });
+    if (u.startsWith(API + '/prices')) { const s = decodeURIComponent(u.split('symbol=')[1]); return ok({ ...datos(s), name: s === '^GSPC' ? 'S&P 500' : 'Nombre ' + s, currency: s === '^TNX' ? 'USD' : 'USD', exchange: 'X' }); }
+    if (u.startsWith(API + '/morning')) return ok({ source: 'RTTNews', title: 'Titulo', date: 'October 05, 2026 08:57 ET', url: 'https://www.rttnews.com/content/marketanalysis.aspx', temas: tem, empresas: [], aviso: 'aviso' });
+    if (u.startsWith(API + '/news')) return ok([{ title: 'Noticia', link: 'https://ok.example/a', src: 'F', date: 'hoy' }]);
+    if (u.startsWith(API + '/feed')) return ok([{ title: 'Titular ' + u.split('src=')[1], link: 'https://ok.example/f' }]);
+    if (u.startsWith(API + '/insiders')) return ok([{ title: '4 - Statement', link: 'https://www.sec.gov/Archives/x', date: '2026-10-01T10:00:00' }]);
+    if (u.startsWith(API + '/options')) return ok({ symbol: 'SPX', spot: 100, expirations: ['2026-11-20'], pcVol: 1.2, pcOI: 0.8, rows: [{ exp: '2026-11-20', t: 'C', k: 100, bid: 1, ask: 1.2, iv: 0.2, d: 0.5, v: 10, oi: 20 }] });
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  for (const f of ['core.js', 'app.js']) { const el = d.createElement('script'); el.textContent = fs.readFileSync(path.join(SITE, f), 'utf8'); d.body.appendChild(el); }
+  const esperar = async (fn, n = 60) => { for (let i = 0; i < n && !fn(); i++) await new Promise(r => setTimeout(r, 20)); };
+  await esperar(() => false, 5);
+  assert.ok(d.querySelectorAll('#cat button').length >= 40);
+  const chip = t => [...d.querySelectorAll('#cat button')].find(b => b.textContent === t);
+  chip('^GSPC').click(); await esperar(() => d.querySelector('#b table'));
+  assert.match(d.getElementById('qh').textContent, /Índice/);
+  assert.match(d.getElementById('t').textContent, /Resumen para decidir/);
+  assert.match(d.getElementById('t').textContent, /Precio, medias móviles y cruces/);
+  assert.match(d.getElementById('b').textContent, /Si hubieras invertido 10,000 USD hace/);
+  assert.match(d.getElementById('b').textContent, /no se compra directamente/);
+  assert.match(d.getElementById('b').textContent, /rango de resultados/);
+  assert.ok(d.querySelector('#b svg rect title') || d.querySelector('#b svg'));
+  const op = d.getElementById('opt'); op.open = true; op.dispatchEvent(new w.Event('toggle'));
+  await esperar(() => d.querySelector('#ob table'));
+  assert.match(d.getElementById('ob').textContent, /Vencimiento 2026-11-20/);
+  assert.ok(pedidos.some(u => u.includes('/options?symbol=%5ESPX')));
+  d.querySelector('#tabs [data-i="2"]').click(); await esperar(() => d.querySelector('#mm a') && d.querySelector('#lv a') && d.querySelector('#po a'));
+  assert.equal(d.getElementById('fx').hidden, true);
+  assert.match(d.getElementById('wk').textContent, /J\.P\. Morgan/);
+  assert.equal(d.querySelectorAll('#lv a').length >= 6, true);                      // 2 titulares + 6 cuentas de X
+  assert.ok([...d.querySelectorAll('#po a')].some(a => a.href.startsWith('https://www.quiverquant.com/')));
+  chip('^TNX').click(); await esperar(() => /tasa de interés/.test(d.getElementById('b').textContent));
+  assert.match(d.getElementById('b').textContent, /tasa de interés, no un precio/); assert.doesNotMatch(d.getElementById('b').textContent, /Veredicto/);
+  assert.match(d.getElementById('qh').textContent, /Bono/);
   assert.deepEqual(errores, []);
 });

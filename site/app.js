@@ -60,7 +60,7 @@ $('demo').onclick=()=>{let s=7;const rnd=()=>{s=(s+0x6D2B79F5)|0;let t=Math.imul
 for(let i=0;i<1100;i++){while(d.getDay()%6==0)d.setDate(d.getDate()+1);const q=p;p*=1+0.0004+0.003*Math.sin(i/90)+0.012*gs();o+=`${d.toISOString().slice(0,10)},${q.toFixed(2)},${(Math.max(p,q)*1.004).toFixed(2)},${(Math.min(p,q)*0.996).toFixed(2)},${p.toFixed(2)},1000\n`;d.setDate(d.getDate()+1)}
 $('csv').value=o;load(o,'DEMO');if(D){D.demo=true;render()}};
 
-async function jget(u){const r=await fetch(u,{cache:'no-cache'});if(!r.ok)throw new Error(r.status);return r.json()}
+async function jget(u){const r=await fetch(u,{cache:'no-cache'});if(!r.ok){let d='';try{const j=await r.json();d=[].concat(j.detalle||j.error||'').join(', ')}catch(e){}throw new Error(r.status+(d?' '+d:''))}return r.json()}
 async function pick(sel){const o=sel.selectedOptions[0],st=$('ast');if(!o||!/^[\w.-]+\.json$/.test(o.value))return;
 try{const d=await jget('data/'+o.value);if(!validate(d))throw 0;mkt=o.dataset.m;document.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m==mkt));
 D={c:d.c,h:d.h,l:d.l};$('tk').value=String(d.symbol).slice(0,12);try{localStorage.setItem('sym',o.value)}catch(e){}
@@ -73,15 +73,15 @@ sel.onchange=()=>pick(sel);$('autob').hidden=false;pick(sel)}catch(e){st.textCon
 auto();
 
 /* v2: búsqueda de cualquier ticker, encabezado de cotización, noticias, veredicto y costos en % */
-let API='',META=null,CRY=[],SYM='',tmr;
+let KIND="eq",API='',META=null,CRY=[],SYM='',tmr;
 async function cfg(){try{const c=await jget('config.json');API=/^https:\/\/[\w.-]+\.workers\.dev$/.test(c.api||'')?c.api:''}catch(e){}try{CRY=await jget('data/crypto.json')}catch(e){}if(!Array.isArray(CRY))CRY=[]}
 function header(){const c=D.c,n=c.length,l=c[n-1],p=c[n-2],ch=l/p-1,w=c.slice(-252),hi=Math.max(...w),lo=Math.min(...w),m=META||{};
-$('qh').innerHTML=`<div class="qh"><div><b class="qn">${esc((m.name||SYM).slice(0,60))}</b><div class="mut sm">${esc(SYM)}${m.exchange?' · '+esc(m.exchange):''}${m.currency?' · '+esc(m.currency):''} · cierre diario, no en tiempo real</div></div><div class="qp">${n2(l)} <span style="color:var(--${ch>=0?'ok':'bd'})">${ch>=0?'+':''}${pc(ch)}</span></div><div class="mut sm qr">Rango de 52 semanas: ${n2(lo)} a ${n2(hi)}. El precio está al ${pc((l-lo)/(hi-lo||1))} de ese rango.</div></div>`}
+$('qh').innerHTML=`<div class="qh"><div><b class="qn">${esc((m.name||SYM).slice(0,60))}</b><div class="mut sm">${esc(SYM)}${m.exchange?' · '+esc(m.exchange):''}${m.currency?' · '+esc(m.currency):''} · ${esc(KINDS[KIND]||'')} · cierre diario, no en tiempo real</div></div><div class="qp">${n2(l)} <span style="color:var(--${ch>=0?'ok':'bd'})">${ch>=0?'+':''}${pc(ch)}</span></div><div class="mut sm qr">Rango de 52 semanas: ${n2(lo)} a ${n2(hi)}. El precio está al ${pc((l-lo)/(hi-lo||1))} de ese rango.</div></div>`}
 async function loadSym(sym,kind){const st=$('ast');if(!API){st.textContent='Falta conectar tu servicio gratuito: ver config.json.';return}
 st.textContent='Cargando '+sym+'…';
 try{const d=await jget(`${API}/${kind=='c'?'crypto':'prices'}?symbol=${encodeURIComponent(sym)}`);if(!validate(d))throw 0;
-mkt=kind=='c'||/(-USD|USDT)$/.test(sym)?'cr':/\.MX$/.test(sym)?'mx':'us';document.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m==mkt));
-D={c:d.c,h:d.h,l:d.l};META=d;SYM=String(d.symbol).slice(0,20);$('tk').value=SYM;$('sr').hidden=true;
+mkt=kind=='c'||/(-USD|USDT)$/.test(sym)?'cr':/\.MX$|^\^MXX$|^MXN=X$/.test(sym)?'mx':'us';document.querySelectorAll('[data-m]').forEach(x=>x.setAttribute('aria-pressed',x.dataset.m==mkt));
+D={c:d.c,h:d.h,l:d.l};META=d;KIND=kindOf(d.symbol);SYM=String(d.symbol).slice(0,20);$('tk').value=SYM;$('sr').hidden=true;
 st.textContent=`${SYM}: último dato ${String(d.t[d.t.length-1]).slice(0,10)}`;st.style.color='var(--ok)';analyze();header();show(1)}
 catch(e){st.textContent='No pude cargar ese ticker. Revisa el símbolo o intenta más tarde.';st.style.color='var(--bd)'}}
 async function lookup(q){q=q.trim();const box=$('sr');if(q.length<2){box.hidden=true;return}const U=q.toUpperCase();
@@ -98,9 +98,93 @@ try{const r=await jget(`${API}/news?q=${encodeURIComponent(q)}`);const it=r.filt
 if(!it.length){el.textContent='Sin noticias recientes.';return}
 el.replaceChildren(...it.map(i=>{const d=document.createElement('div'),a=document.createElement('a'),s=document.createElement('div'),w=document.createElement('div');d.className='row';a.href=i.link;a.textContent=i.title;a.target='_blank';a.rel='noopener noreferrer';s.className='mut sm';s.textContent=`${i.src||''} · ${i.date||''}`;w.append(a,s);d.append(w);return d}))}
 catch(e){el.textContent='No pude cargar noticias ahora.'}}
-function fun(){news();const cr=mkt=='cr';$('fx').hidden=cr;if(!cr)fcalc()}
-const _b=btr;btr=function(){_b();ext()};$('cost').oninput=btr;
+function fun(){morning();weekly();news();live();pol();const ok=KIND=='eq'&&mkt!='cr';$('fx').hidden=!ok;$('fm').innerHTML=ok?'':'<p class="note">Este instrumento no tiene estados financieros: aquí aplican las noticias y el análisis de mercado.</p>';if(ok)fcalc()}
+const _b=btr;btr=function(){if(KIND=='bond'){$('b').innerHTML='<p class="note">Esto es una tasa de interés, no un precio: la prueba de la regla no aplica. Úsala como contexto del mercado de bonos.</p>';return}_b();ext()};$('cost').oninput=btr;
 function ext(){if(!R||!D)return;const k=Math.max(0,+$('cost').value||0)/100,o=bt(D.c,R,k),s=st(o.rs,R.A),h=st(o.bh,R.A),y=o.rs.length/R.A,w=[0,.001,.0025,.005].map(x=>st(bt(D.c,R,x).rs,R.A)),f=v=>v.toLocaleString('es-MX',{maximumFractionDigits:0});
 const lo=s.sr-1.96*s.se,q=[[s.sr>h.sr,'¿La ganancia compensa el riesgo?','Su Sharpe es '+(s.sr>h.sr?'mayor':'menor')+' que el de comprar y mantener.'],[lo>0,'¿Se distingue del azar?','El intervalo del Sharpe '+(lo>0?'no incluye':'incluye')+' el cero.'],[s.dd>h.dd,'¿Reduce la caída máxima?','Caída de '+pc(s.dd)+' frente a '+pc(h.dd)+'.'],[o.tr>=30&&y>=5,'¿Hay suficientes datos?',o.tr+' operaciones en '+n2(y,1)+' años (se piden al menos 30 y 5).']];
 $('b').insertAdjacentHTML('afterbegin','<h2>Veredicto en 4 preguntas</h2>'+q.map(([ok,t,d])=>`<div class="row"><div><b>${t}</b><div class="mut sm">${d}</div></div><div class="val" style="color:var(--${ok?'ok':'bd'})">${ok?'Sí':'No'}</div></div>`).join('')+`<h2>Si hubieras invertido 10,000</h2><div class="row"><div><b>Con la regla</b></div><div class="val">${f(1e4*Math.pow(1+s.cagr,y))}</div></div><div class="row"><div><b>Comprando y manteniendo</b></div><div class="val">${f(1e4*Math.pow(1+h.cagr,y))}</div></div><h2>¿Y si los costos fueran otros?</h2><table><tr><th>Costo por operación</th><th>Retorno anual</th><th>Sharpe</th></tr>`+w.map((x,i)=>`<tr><td>${['0%','0.1%','0.25%','0.5%'][i]}</td><td>${pc(x.cagr)}</td><td>${n2(x.sr)}</td></tr>`).join('')+'</table>')}
 cfg();
+
+/* v3: mercados (índices, futuros, divisas, bonos), decisión, cruces, opciones, análisis de apertura, titulares y políticos */
+const KINDS={eq:'Acción o ETF',idx:'Índice',fut:'Futuro',fx:'Divisa',bond:'Bono (tasa de rendimiento)',cr:'Cripto'};
+const CAT=[['Índices',[['^GSPC','S&P 500'],['^IXIC','Nasdaq Composite'],['^NDX','Nasdaq 100'],['^DJI','Dow Jones'],['^RUT','Russell 2000'],['^VIX','VIX (volatilidad)'],['^MXX','S&P/BMV IPC'],['^FTSE','FTSE 100'],['^GDAXI','DAX'],['^N225','Nikkei 225'],['^HSI','Hang Seng']]],
+['Futuros',[['ES=F','S&P 500 mini'],['NQ=F','Nasdaq 100 mini'],['YM=F','Dow mini'],['CL=F','Petróleo WTI'],['BZ=F','Petróleo Brent'],['NG=F','Gas natural'],['GC=F','Oro'],['SI=F','Plata'],['HG=F','Cobre'],['ZC=F','Maíz'],['ZS=F','Soya'],['ZW=F','Trigo']]],
+['Divisas',[['MXN=X','Dólar / peso'],['EURUSD=X','Euro / dólar'],['GBPUSD=X','Libra / dólar'],['JPY=X','Dólar / yen'],['CAD=X','Dólar / dólar canadiense'],['CNY=X','Dólar / yuan'],['DX-Y.NYB','Índice del dólar']]],
+['Bonos',[['^IRX','Tasa T-Bill 13 semanas'],['^FVX','Tasa Tesoro 5 años'],['^TNX','Tasa Tesoro 10 años'],['^TYX','Tasa Tesoro 30 años'],['TLT','ETF bonos 20+ años'],['IEF','ETF bonos 7-10 años'],['SHY','ETF bonos 1-3 años'],['BND','ETF bonos EE. UU.'],['LQD','ETF corporativos'],['HYG','ETF alto rendimiento'],['EMB','ETF emergentes']]],
+['Cripto',[['BTC-USD','Bitcoin'],['ETH-USD','Ethereum'],['SOL-USD','Solana'],['XRP-USD','XRP']]]];
+const mkChip=(t,fn,title)=>{const k=document.createElement('button');k.className='chip';k.style.cursor='pointer';k.textContent=t;if(title)k.title=title;k.onclick=fn;return k};
+function cat(){const el=$('cat');if(!el)return;el.replaceChildren(...CAT.map(([t,l])=>{const d=document.createElement('div'),h=document.createElement('b');h.textContent=t;d.append(h,document.createElement('br'),...l.map(([s,n])=>mkChip(s,()=>loadSym(s,'y'),n)));d.style.margin='8px 0';return d}));
+const n=document.createElement('p');n.className='mut sm';n.textContent='Acciones y ETFs: usa el buscador. Opciones: elige una acción, ETF o índice y abre "Opciones" en la pestaña Técnico (solo EE. UU., con retraso).';el.append(n)}
+const moneda=()=>META&&META.currency?META.currency:mkt=='mx'?'MXN':mkt=='cr'?'USDT':'USD';
+const fmt0=v=>v.toLocaleString('es-MX',{maximumFractionDigits:0});
+function renderThemes(m){const W={beneficio:'ok',presión:'bd',vigilar:'wn'},DR={up:'Sube',down:'Baja',mixed:'Mixto',flat:'—'},root=document.createDocumentFragment(),here=[];
+for(const t of m.temas||[]){const row=document.createElement('div'),l=document.createElement('div'),b=document.createElement('b'),v=document.createElement('div'),ch=document.createElement('div');row.className='row';b.textContent=String(t.titulo).slice(0,60);l.append(b);v.className='val';v.textContent=DR[t.dir]||'—';ch.className='sm';ch.style.gridColumn='1/-1';
+for(const x of t.activos||[]){const k=mkChip(`${x.s} · ${x.e}`,()=>loadSym(String(x.s),'y'),String(x.n));k.style.borderColor=`var(--${W[x.e]||'ln'})`;ch.append(k);if(x.s===SYM)here.push(`${t.titulo} (${x.e})`)}
+row.append(l,v,ch);root.append(row)}
+for(const c of m.empresas||[])if(c.s===SYM)here.push(`mencionada en el texto (${DR[c.dir]||'—'})`);
+if(here.length){const n=document.createElement('p');n.className='note';n.textContent=`${SYM} aparece aquí: ${here.join('; ')}.`;root.prepend(n)}
+const av=document.createElement('p');av.className='mut sm';av.textContent=String(m.aviso||'');root.append(av);return root}
+const safeLink=(u,pre,fb)=>String(u).startsWith(pre)?String(u):fb;
+async function morning(){const el=$('mm');if(!el||el.dataset.ok)return;if(!API){el.textContent='Necesita tu servicio gratuito: ver config.json.';return}el.textContent='Cargando…';
+try{const m=await jget(`${API}/morning`),head=document.createElement('div'),a=document.createElement('a'),sd=document.createElement('div');
+a.href=safeLink(m.url,'https://www.rttnews.com/','https://www.rttnews.com/content/marketanalysis.aspx');a.textContent=String(m.title).slice(0,160);a.target='_blank';a.rel='noopener noreferrer';sd.className='mut sm';sd.textContent=`${m.source} · ${String(m.date).slice(0,40)}. Lee el texto original en su sitio.`;head.append(a,sd);
+const f=renderThemes(m);f.prepend(head);el.replaceChildren(f);el.dataset.ok='1'}catch(e){el.textContent='No pude cargar el análisis ahora ('+String(e.message||'').slice(0,50)+').'}}
+async function weekly(){const el=$('wk');if(!el||el.dataset.ok)return;try{const m=await jget('data/weekly.json'),head=document.createElement('div'),a=document.createElement('a'),sd=document.createElement('div');
+a.href=safeLink(m.url,'https://am.jpmorgan.com/','https://am.jpmorgan.com/');a.textContent='Informe semanal de mercado de J.P. Morgan Asset Management';a.target='_blank';a.rel='noopener noreferrer';sd.className='mut sm';sd.textContent=`${String(m.fecha||'').slice(0,30)} · actualizado ${String(m.actualizado||'').slice(0,10)}. Lee el informe original en su sitio.`;head.append(a,sd);
+const f=renderThemes(m);f.prepend(head);el.replaceChildren(f);el.dataset.ok='1'}catch(e){el.textContent='Aún no hay resumen semanal (se genera con el robot diario; si falla, el informe se puede leer en el sitio de J.P. Morgan).'}}
+async function live(){const el=$('lv');if(!el||el.dataset.ok)return;if(!API){el.textContent='Necesita tu servicio gratuito: ver config.json.';return}el.textContent='Cargando…';const out=document.createDocumentFragment();
+for(const [k,n] of [['fj','FinancialJuice'],['zh','ZeroHedge']]){const h=document.createElement('b');h.textContent=n;out.append(h);
+try{const r=(await jget(`${API}/feed?src=${k}`)).filter(i=>/^https?:\/\//.test(i.link)).slice(0,6);for(const i of r){const d=document.createElement('div'),a=document.createElement('a');d.className='row';a.href=i.link;a.textContent=i.title;a.target='_blank';a.rel='noopener noreferrer';d.append(a);out.append(d)}if(!r.length)out.append(document.createTextNode(' sin titulares'))}
+catch(e){const m=document.createElement('p');m.className='mut sm';m.textContent='No disponible ahora ('+String(e.message).slice(0,40)+').';out.append(m)}}
+const x=document.createElement('p');x.className='sm';x.append('Cuentas de X (se abren en X; leerlas aquí requiere pagar su API): ');
+for(const h of ['unusual_whales','financialjuice','FinanceLancelot','BeatTheInsider','zerohedge','DeItaone']){const a=document.createElement('a');a.href='https://x.com/'+h;a.textContent='@'+h;a.target='_blank';a.rel='noopener noreferrer';x.append(a,' ')}
+out.append(x);el.replaceChildren(out);el.dataset.ok='1'}
+async function pol(){const el=$('po');if(!el)return;const s=encodeURIComponent(SYM||'');el.replaceChildren();const L=document.createDocumentFragment();
+const add=(t,u)=>{const d=document.createElement('div'),a=document.createElement('a');a.href=u;a.textContent=t;a.target='_blank';a.rel='noopener noreferrer';d.append(a);L.append(d)};
+if(SYM&&KIND=='eq'&&mkt=='us')add('Compras y ventas de directivos de '+SYM+' (formularios 4 de la SEC)',`https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&type=4&CIK=${s}`);
+add('Operaciones de congresistas de EE. UU. (Quiver, sitio web gratuito)','https://www.quiverquant.com/congresstrading/');add('Declaraciones de la Cámara de Representantes (oficial)','https://disclosures-clerk.house.gov/FinancialDisclosure');add('Declaraciones del Senado (oficial)','https://efdsearch.senate.gov/search/');
+el.append(L);
+if(API&&SYM&&KIND=='eq'&&mkt=='us'){try{const r=await jget(`${API}/insiders?symbol=${s}`),n=document.createElement('p');n.className='mut sm';n.textContent=r.length?'Últimos formularios 4 (SEC):':'Sin formularios 4 recientes.';el.append(n);
+for(const i of r.slice(0,5)){const d=document.createElement('div'),a=document.createElement('a');a.href=safeLink(i.link,'https://www.sec.gov/','https://www.sec.gov/');a.textContent=`${String(i.date).slice(0,10)} · ${String(i.title).slice(0,80)}`;a.target='_blank';a.rel='noopener noreferrer';d.append(a);el.append(d)}}catch(e){}}}
+{const dt=$('p2').querySelector('details');
+$('p2').insertAdjacentHTML('afterbegin','<h2>Resumen semanal de mercado (J.P. Morgan)</h2><div id="wk" class="mut"></div>');
+$('p2').insertAdjacentHTML('afterbegin','<h2>Morning Market Analysis (RTTNews)</h2><div id="mm" class="mut"></div>');
+dt.insertAdjacentHTML('beforebegin','<h2>Titulares en vivo</h2><div id="lv" class="mut"></div><h2>Políticos e insiders</h2><p class="mut sm">Los congresistas de EE. UU. deben declarar sus operaciones en un plazo de 45 días; no hay datos en tiempo real. Los directivos declaran en 2 días hábiles (formulario 4).</p><div id="po"></div>');
+$('p0').querySelector('#ast').insertAdjacentHTML('afterend','<h2>Mercados que puedes analizar</h2><div id="cat"></div>');cat()}
+const _t=tec;tec=function(){_t();tecx()};
+function tecx(){if(!R||!D)return;const el=$('t');if(KIND=='bond'){el.insertAdjacentHTML('afterbegin','<p class="note">Estás viendo una tasa de interés (rendimiento), no un precio. Una tasa que sube suele bajar el precio de los bonos y presionar a las FIBRAs y constructoras.</p>')}
+const k=Math.max(0,+$('cost').value||0)/100,o=bt(D.c,R,k),td=today(D.c,R,o.pos),dc=decide({bull:R.bull,mom:R.mom,dn:R.dn.filter(Boolean).length,vp:R.vp,dd:R.dd,inn:td.inn});
+const ul=(t,l,c)=>l.length?`<div class="sm"><b style="color:var(--${c})">${t}</b><ul>${l.map(x=>`<li>${x}</li>`).join('')}</ul></div>`:'';
+const card=`<h2>Resumen para decidir</h2><div class="row"><div><b>${td.inn?'La regla está dentro del mercado':'La regla está fuera del mercado (en efectivo)'}</b><div class="mut sm">${td.inn?`Desde hace ${td.days} días, con entrada cerca de ${n2(td.entry)}. Saldría si el cierre cae bajo la SMA 100 (${n2(td.exit)}, a ${pc(td.exit/td.last-1)} del precio).`:`Desde hace ${td.days} días. Entraría si el cierre supera la SMA 50 (${n2(td.sma50)}) y la SMA 50 está sobre la SMA 200 (${n2(td.sma200)}).`}</div></div><div class="val" style="color:var(--${td.inn?'ok':'wn'})">${td.inn?'Dentro':'Fuera'}</div></div>${ul('A favor',dc.f,'ok')}${ul('En contra',dc.c,'bd')}${ul('A vigilar',dc.w,'wn')}<p class="mut sm">La regla solo compra o se queda en efectivo; no vende en corto. Es un resumen de reglas con respaldo en papers, no una recomendación personalizada.</p>`;
+const nt=el.querySelector('.note');if(nt)nt.insertAdjacentHTML('afterend',card);
+const ev=crosses(R.s50,R.s200),i0=Math.max(0,R.N-400),svg=el.querySelector('svg');
+if(svg){const lg=svg.nextElementSibling,h2=[...el.querySelectorAll('h2')].find(x=>/Precio y medias/.test(x.textContent));if(h2)h2.textContent='Precio, medias móviles y cruces';if(lg&&lg.classList.contains('sm'))lg.remove();
+const s2=afterCross(D.c,ev,60),r=x=>x.n?`${x.n} veces · promedio ${pc(x.avg)} · ${pc(x.win)} positivos`:'sin casos';
+svg.outerHTML=crossSVG(i0,ev)+`<div class="sm mut">Línea negra: precio. Azul: SMA 50. Roja: SMA 200. Triángulo verde hacia arriba: cruce alcista (la SMA 50 sube sobre la SMA 200). Triángulo rojo hacia abajo: cruce bajista.</div><table><tr><th>Tras cada cruce (60 días después)</th><th>En este ticker</th></tr><tr><td>Alcista</td><td>${r(s2.golden)}</td></tr><tr><td>Bajista</td><td>${r(s2.death)}</td></tr></table><p class="mut sm">Los cruces confirman una tendencia que ya empezó y fallan en mercados laterales; con pocos casos, el promedio dice poco. Un cruce bajista no es una orden de vender en corto: vender en corto exige margen, tiene pérdida ilimitada y cuesta intereses, y esta app no lo usa.</p>`}
+if((KIND=='eq'||KIND=='idx')&&mkt!='mx'&&mkt!='cr'&&!$('opt')){el.insertAdjacentHTML('beforeend','<details id="opt"><summary>Opciones (EE. UU., con retraso de unos 15 minutos)</summary><div id="ob" class="mut sm">Se carga al abrir.</div></details>');$('opt').addEventListener('toggle',loadOpt)}}
+function crossSVG(i0,ev){const W=600,H=230,S=[D.c,R.s50,R.s200].map(a=>a.slice(i0)),n=S[0].length,all=S.flat().filter(v=>!isNaN(v)),mn=Math.min(...all),mx=Math.max(...all),sx=W/(n-1),sy=(H-30)/(mx-mn||1),Y=v=>H-10-(v-mn)*sy;
+const P=a=>{let d='',f=1;a.forEach((v,j)=>{if(isNaN(v))return;d+=(f?'M':'L')+(j*sx).toFixed(1)+' '+Y(v).toFixed(1);f=0});return d},col=['var(--fg)','var(--pri)','var(--bd)'];
+const ln=S.map((a,i)=>`<path d="${P(a)}" fill="none" style="stroke:${col[i]};stroke-width:${i?1.4:1.8}"/>`).join('');
+const mk=ev.filter(e=>e.i>=i0).map(e=>{const x=((e.i-i0)*sx).toFixed(1),y=Y(D.c[e.i]),g=e.t=='golden';return `<path d="M${x} ${(g?y-16:y+16).toFixed(1)} l-6 ${g?10:-10} h12 z" style="fill:var(--${g?'ok':'bd'})"><title>${g?'Cruce alcista':'Cruce bajista'}</title></path>`}).join('');
+return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Precio con SMA 50, SMA 200 y cruces">${ln}${mk}</svg>`}
+function eqSVG(E,B,pos){const W=600,H=210,n=E.length,all=[...E,...B],mn=Math.min(...all),mx=Math.max(...all),sx=W/(n-1),sy=(H-10)/(mx-mn||1),Y=v=>H-5-(v-mn)*sy;let sh='';
+for(let i=0;i<n;){if(pos[i]===0){let j=i;while(j<n&&pos[j]===0)j++;sh+=`<rect x="${(i*sx).toFixed(1)}" y="0" width="${(((j-1)-i)*sx+sx).toFixed(1)}" height="${H}" style="fill:var(--ln);opacity:.55"><title>La regla estuvo en efectivo</title></rect>`;i=j}else i++}
+const P=a=>a.map((v,j)=>(j?'L':'M')+(j*sx).toFixed(1)+' '+Y(v).toFixed(1)).join('');
+return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Valor de la regla frente a comprar y mantener">${sh}<path d="${P(B)}" fill="none" style="stroke:var(--mut);stroke-width:1.4"/><path d="${P(E)}" fill="none" style="stroke:var(--pri);stroke-width:1.8"/></svg>`}
+const _e=ext;ext=function(){_e();ext3()};
+function ext3(){const b=$('b');if(!R||!D||!b.firstChild)return;const k=Math.max(0,+$('cost').value||0)/100,o=bt(D.c,R,k),y=o.rs.length/R.A;let e=1,g=1;const E=[1],B=[1];o.rs.forEach((r,i)=>{E.push(e*=1+r);B.push(g*=1+o.bh[i])});
+const svg=b.querySelector('svg');if(svg){const lg=svg.nextElementSibling;if(lg&&/^Azul/.test(lg.textContent))lg.textContent='Azul: la regla. Gris: comprar y mantener. Zonas sombreadas: la regla estuvo fuera del mercado, en efectivo; ahí la línea azul queda plana porque no gana ni pierde.';svg.outerHTML=eqSVG(E,B,o.pos)}
+const h2=[...b.querySelectorAll('h2')].find(x=>/Si hubieras invertido/.test(x.textContent));
+if(h2){h2.textContent=`Si hubieras invertido 10,000 ${moneda()} hace ${n2(y,1)} años`;const rows=[];let s=h2.nextElementSibling;while(s&&rows.length<2){if(s.classList.contains('row'))rows.push(s);s=s.nextElementSibling}
+const p=document.createElement('p');p.className='mut sm';p.textContent=`Las cantidades están en ${moneda()}, la moneda del instrumento.${['idx','fut','fx'].includes(KIND)?' Un índice, futuro o divisa no se compra directamente: es como si existiera un producto que lo replica.':''} Sirve para ver el tamaño de las diferencias entre la regla y comprar y mantener; el futuro no tiene por qué repetir el pasado.`;if(rows[1])rows[1].after(p)}
+const m=mc(o.rs,{n:400});if(m)b.insertAdjacentHTML('beforeend',`<h2>¿Qué rango de resultados podría tener en 1 año?</h2><p class="mut sm">Simulación que mezcla al azar bloques de 10 días de los resultados pasados de la regla (400 trayectorias). Supone que el futuro se parece al pasado.</p><table><tr><th>Escenario</th><th>Con 10,000 ${moneda()}</th></tr><tr><td>Malo (el 5% peor)</td><td>${fmt0(1e4*m.p5)}</td></tr><tr><td>Típico (mediana)</td><td>${fmt0(1e4*m.p50)}</td></tr><tr><td>Bueno (el 5% mejor)</td><td>${fmt0(1e4*m.p95)}</td></tr></table><p class="mut sm">Probabilidad de terminar el año en pérdida: ${pc(m.loss)}. Caída máxima típica: ${pc(m.dd50)}; en el 5% peor de los casos: ${pc(m.dd5)}.</p>`)}
+const OPT={'^GSPC':'^SPX','^NDX':'^NDX','^VIX':'^VIX','^RUT':'^RUT','^DJI':'^DJX'};
+async function loadOpt(){const el=$('ob');if(!$('opt').open||el.dataset.ok)return;if(!API){el.textContent='Necesita tu servicio gratuito: ver config.json.';return}el.textContent='Cargando…';
+try{const d=await jget(`${API}/options?symbol=${encodeURIComponent(OPT[SYM]||SYM)}`),f=document.createDocumentFragment(),p=document.createElement('p');
+p.textContent=`Precio de referencia: ${n2(d.spot)}. Razón put/call por volumen: ${d.pcVol==null?'n/d':n2(d.pcVol)}; por contratos abiertos: ${d.pcOI==null?'n/d':n2(d.pcOI)}. Arriba de 1 hay más puts (coberturas o pesimismo) que calls.`;f.append(p);
+const rows=d.rows||[],exps=[...new Set(rows.map(r=>r.exp))];
+for(const x of exps){const t=document.createElement('table'),cap=document.createElement('caption');cap.textContent='Vencimiento '+String(x).slice(0,10);t.append(cap);
+const hd=document.createElement('tr');['Tipo','Strike','Bid','Ask','IV','Delta','Vol.','OI'].forEach(h=>{const c=document.createElement('th');c.textContent=h;hd.append(c)});t.append(hd);
+for(const r of rows.filter(r=>r.exp===x)){const tr=document.createElement('tr');[r.t=='C'?'Call':'Put',n2(r.k),n2(r.bid),n2(r.ask),pc(r.iv),n2(r.d),r.v,r.oi].forEach(v=>{const c=document.createElement('td');c.textContent=String(v);tr.append(c)});t.append(tr)}f.append(t)}
+const g=document.createElement('p');g.className='mut sm';g.textContent='Qué es cada cosa: IV es la volatilidad implícita, el movimiento que el mercado descuenta. Delta indica cuánto cambia la opción cuando el precio cambia 1 y, de forma aproximada, la probabilidad de terminar dentro del dinero. Vol. es el volumen del día y OI los contratos abiertos. Comprar opciones puede perder el 100% de la prima; la regla de la app no las usa.';f.append(g);el.replaceChildren(f);el.dataset.ok='1'}
+catch(e){el.textContent='No pude cargar las opciones de este instrumento ahora ('+String(e.message||'').slice(0,40)+').'}}

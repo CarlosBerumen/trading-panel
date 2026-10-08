@@ -147,3 +147,10 @@ def test_main_escribe_lista_de_cripto_y_tolera_su_fallo(tmp_path):
         raise RuntimeError("451")
     assert U.main(raiz, fetchers=f, now=NOW, pause=0, crypto_list=roto) == 1
     assert len(json.loads((raiz / "site/data/crypto.json").read_text())) == 60
+
+
+def test_pdf_solo_acepta_direcciones_de_jpmorgan():
+    import pdf_text
+    for malo in ["http://am.jpmorgan.com/x.pdf", "https://malo.example/x.pdf", "file:///etc/passwd", "https://am.jpmorgan.com.malo.example/x.pdf"]:
+        with pytest.raises(ValueError):
+            pdf_text.descargar(malo)

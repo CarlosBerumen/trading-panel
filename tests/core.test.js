@@ -141,3 +141,43 @@ test('validate: acepta datos sanos y rechaza malos', () => {
 test('esc: neutraliza HTML', () => {
   assert.equal(C.esc('<img src=x onerror="a">&\''), '&lt;img src=x onerror=&quot;a&quot;&gt;&amp;&#39;');
 });
+
+test('crosses: detecta cruces alcistas y bajistas de dos medias', () => {
+  const a = [1, 2, 3, 4, 3, 2, 1], b = [3, 3, 3, 3, 3, 3, 3];
+  assert.deepEqual(C.crosses(a, b), [{ i: 3, t: 'golden' }, { i: 5, t: 'death' }]);
+  assert.deepEqual(C.crosses([NaN, NaN, 2], [NaN, NaN, 1]), []);
+});
+
+test('afterCross: rendimiento promedio y proporción de aciertos tras cada cruce', () => {
+  const c = Array.from({ length: 200 }, (_, i) => 100 + i);
+  const r = C.afterCross(c, [{ i: 10, t: 'golden' }, { i: 20, t: 'golden' }, { i: 190, t: 'death' }], 60);
+  assert.equal(r.golden.n, 2); assert.ok(r.golden.avg > 0 && r.golden.win === 1); assert.equal(r.death.n, 0); assert.ok(isNaN(r.death.avg));
+});
+
+test('bt devuelve la posición diaria y today() resume la regla', () => {
+  const c = serie(500, i => 100 * Math.pow(1.002, i)), R = mk(c), o = C.bt(c, R, 0);
+  assert.equal(o.pos.length, c.length); assert.ok(o.pos.every(x => x === 0 || x === 1));
+  const t = C.today(c, R, o.pos);
+  assert.equal(t.inn, true); assert.ok(t.days > 0 && t.entry > 0 && t.exit < t.last);
+});
+
+test('decide: separa a favor, en contra y a vigilar', () => {
+  const d = C.decide({ bull: true, mom: 0.2, dn: 4, vp: 0.9, dd: -0.01, inn: true });
+  assert.ok(d.f.length >= 3 && d.c.length === 0); assert.ok(d.w.some(x => /volatilidad/.test(x)) && d.w.some(x => /cerca de su máximo/.test(x)));
+  const e = C.decide({ bull: false, mom: -0.1, dn: 0, vp: 0.3, dd: -0.35, inn: false });
+  assert.equal(e.f.length, 0); assert.ok(e.c.length >= 3); assert.ok(e.w.some(x => /35%/.test(x)));
+});
+
+test('mc: simulación reproducible con ruido; percentiles ordenados y pérdida acotada', () => {
+  let s = 7; const rng = () => { s = (s * 1664525 + 1013904223) % 4294967296; return s / 4294967296; };
+  const rs = Array.from({ length: 600 }, () => (rng() - 0.48) * 0.02);
+  const m = C.mc(rs, { n: 300, rng });
+  assert.ok(m.p5 <= m.p50 && m.p50 <= m.p95); assert.ok(m.loss >= 0 && m.loss <= 1); assert.ok(m.dd5 <= m.dd50 && m.dd50 <= 0);
+  assert.equal(C.mc([0.01, 0.02]), null);
+  const up = C.mc(Array(400).fill(0.001), { n: 50 }); assert.equal(up.loss, 0); assert.ok(up.p5 > 1);
+});
+
+test('kindOf: clasifica índices, futuros, divisas, bonos y cripto', () => {
+  const k = C.kindOf;
+  assert.deepEqual(['^GSPC', '^TNX', 'ES=F', 'MXN=X', 'DX-Y.NYB', 'BTC-USD', 'BTCUSDT', 'SPY', 'WALMEX.MX'].map(k), ['idx', 'bond', 'fut', 'fx', 'fx', 'cr', 'cr', 'eq', 'eq']);
+});
