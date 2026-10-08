@@ -11,7 +11,7 @@ if(rows.length<30)throw'No pude leer 30 cierres válidos. Revisa el formato.';
 if(Date.parse(rows[0].t)>Date.parse(rows[rows.length-1].t))rows.reverse();
 return{c:rows.map(r=>r.c),h:rows.map(r=>r.h>0?r.h:r.c),l:rows.map(r=>r.l>0?r.l:r.c)}}
 function st(rs,A){const m=rs.reduce((a,b)=>a+b,0)/rs.length,s=sd(rs);let e=1,pk=1,dd=0;rs.forEach(x=>{e*=1+x;pk=Math.max(pk,e);dd=Math.min(dd,e/pk-1)});const y=rs.length/A,sr=s>1e-12?m/s*Math.sqrt(A):0;return{cagr:Math.pow(e,1/y)-1,vol:s*Math.sqrt(A),sr,se:Math.sqrt((1+sr*sr/2)/y),dd}}
-function bt(c,R,cost){const {s50,s100,s200}=R;let p=0,tr=0,inv=0;const rs=[],bh=[],pos=[0];for(let i=1;i<c.length;i++){const r=c[i]/c[i-1]-1;let x=p*r,np=p;if(!isNaN(s200[i])){if(!p){if(c[i]>s200[i]&&s50[i]>s200[i]&&c[i]>s50[i])np=1}else if(c[i]<s100[i])np=0}if(np!=p){x-=cost;tr++}if(p)inv++;p=np;rs.push(x);bh.push(r);pos.push(np)}return{rs,bh,tr,inv:inv/rs.length,pos}}
+function bt(c,R,cost,a,cash){const q=a&&a.length===c.length?a:c,{s50,s100,s200}=R;let p=0,tr=0,inv=0;const rs=[],bh=[],pos=[0];for(let i=1;i<c.length;i++){const r=q[i]/q[i-1]-1;let x=p?r:(cash||0),np=p;if(!isNaN(s200[i])){if(!p){if(c[i]>s200[i]&&s50[i]>s200[i]&&c[i]>s50[i])np=1}else if(c[i]<s100[i])np=0}if(np!=p){x-=cost;tr++}if(p)inv++;p=np;rs.push(x);bh.push(r);pos.push(np)}return{rs,bh,tr,inv:inv/rs.length,pos}}
 
 const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function fscore(v){const k=['rev0','rev1','cogs0','cogs1','ni0','ni1','ta0','ta1','ta2','cfo','ltd0','ltd1','ca0','ca1','cl0','cl1'];if(!k.every(x=>Number.isFinite(v[x])))return null;
@@ -20,7 +20,7 @@ return[['ROA positivo',r0>0],['Flujo operativo positivo',cf>0],['ROA mejoró',r0
 const altman=v=>3.25+6.56*(v.ca-v.cl)/v.ta+3.26*v.re/v.ta+6.72*v.ebit/v.ta+1.05*v.eq/v.tl;
 const zone=z=>!Number.isFinite(z)?'':z>2.6?'segura':z>1.1?'gris':'riesgo';
 function sizing(cap,rp,k,atr,price){const u0=cap*rp/100/(k*atr),u=Math.min(u0,cap/price);return{units:u,value:u*price,stop:price-k*atr,loss:u*k*atr,capped:u<u0}}
-function validate(o){try{const n=o.c.length,ok=a=>Array.isArray(a)&&a.length===n&&a.every(x=>Number.isFinite(x)&&x>0);return n>=30&&n<=20000&&ok(o.c)&&ok(o.h)&&ok(o.l)&&Array.isArray(o.t)&&o.t.length===n}catch(e){return false}}
+function validate(o){try{const n=o.c.length,ok=a=>Array.isArray(a)&&a.length===n&&a.every(x=>Number.isFinite(x)&&x>0);return n>=30&&n<=20000&&ok(o.c)&&ok(o.h)&&ok(o.l)&&(o.a===undefined||ok(o.a))&&Array.isArray(o.t)&&o.t.length===n}catch(e){return false}}
 
 
 function crosses(a,b){const ev=[];for(let i=1;i<a.length;i++){if([a[i],b[i],a[i-1],b[i-1]].some(isNaN))continue;const p=a[i-1]-b[i-1],c=a[i]-b[i];if(p<=0&&c>0)ev.push({i,t:'golden'});else if(p>=0&&c<0)ev.push({i,t:'death'})}return ev}

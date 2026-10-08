@@ -181,3 +181,21 @@ test('kindOf: clasifica índices, futuros, divisas, bonos y cripto', () => {
   const k = C.kindOf;
   assert.deepEqual(['^GSPC', '^TNX', 'ES=F', 'MXN=X', 'DX-Y.NYB', 'BTC-USD', 'BTCUSDT', 'SPY', 'WALMEX.MX'].map(k), ['idx', 'bond', 'fut', 'fx', 'fx', 'cr', 'cr', 'eq', 'eq']);
 });
+
+
+test('bt: usa el cierre ajustado para los retornos y el efectivo rinde cuando la regla está fuera', () => {
+  const c = serie(500, i => 100 * Math.pow(1.002, i)), a = c.map((v, i) => v * Math.pow(1.0005, i)), R = mk(c);
+  const base = C.bt(c, R, 0), tot = C.bt(c, R, 0, a), caja = C.bt(c, R, 0, undefined, 0.0002);
+  const f = o => o.rs.reduce((x, r) => x * (1 + r), 1), g = o => o.bh.reduce((x, r) => x * (1 + r), 1);
+  assert.ok(f(tot) > f(base) && g(tot) > g(base));                       // con dividendos rinde más
+  assert.deepEqual(tot.pos, base.pos);                                   // las señales siguen saliendo del precio, no del ajustado
+  assert.ok(base.rs.slice(0, 150).every(x => x === 0));                  // sin efectivo, fuera del mercado no gana nada
+  assert.ok(caja.rs.slice(0, 150).every(x => x === 0.0002));             // con efectivo, gana cada día que está fuera
+});
+
+test('validate: acepta el cierre ajustado solo si es válido', () => {
+  const ok = { symbol: 'X', t: serie(40, dia), c: serie(40, () => 10), h: serie(40, () => 11), l: serie(40, () => 9) };
+  assert.equal(C.validate({ ...ok, a: serie(40, () => 9.9) }), true);
+  assert.equal(C.validate({ ...ok, a: serie(39, () => 9.9) }), false);
+  assert.equal(C.validate({ ...ok, a: serie(40, i => (i ? 9 : -1)) }), false);
+});

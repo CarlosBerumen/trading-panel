@@ -55,7 +55,7 @@ test('news: lee RSS, limpia HTML y descarta enlaces que no son http(s)', async (
   const xml = '<rss><item><title><![CDATA[Sube <b>NVDA</b> &amp; Cia]]></title><link>https://ok.example/a</link><source url="x">Fuente</source><pubDate>Sat, 04 Oct 2026</pubDate></item>'
     + '<item><title>Malo</title><link>javascript:alert(1)</link></item>' + '<item><title>Otro</title><link>https://ok.example/b</link></item>'.repeat(20) + '</rss>';
   const it = parseRss(xml);
-  assert.equal(it[0].title, 'Sube NVDA & Cia'); assert.equal(it.length, 15); assert.ok(it.every(i => /^https?:/.test(i.link)));
+  assert.equal(it[0].title, 'Sube NVDA & Cia'); assert.equal(it.length, 21); assert.ok(it.every(i => /^https?:/.test(i.link)));
   const d = await (await handle(get('/news?q=NVIDIA'), async () => new Response(xml))).json();
   assert.equal(d.length, 15);
 });
@@ -160,4 +160,21 @@ test('weekly: convierte el informe en temas y activos sin copiar frases', async 
   assert.equal(d.fecha, 'October 02, 2026'); assert.equal(t('oil').dir, 'down'); assert.equal(t('oil').activos.find(a => a.s === 'JETS').e, 'beneficio');
   assert.equal(t('chips').dir, 'up'); assert.equal(t('yields').dir, 'down'); assert.equal(t('yields').activos.find(a => a.s === 'TLT').e, 'beneficio');
   assert.doesNotMatch(JSON.stringify(d), /fuel costs|surged this week/); assert.match(d.aviso, /J\.P\. Morgan/);
+});
+
+
+test('sortNews: ordena de la más reciente a la más antigua y descarta lo viejo si hay suficientes recientes', async () => {
+  const { sortNews } = await W(); const now = Date.parse('2026-10-07T12:00:00Z'), d = n => new Date(now - n * 864e5).toUTCString();
+  const it = [['viejo', 200], ['mes', 30], ['hoy', 0], ['ayer', 1], ['sem', 7], ['dos', 2], ['tres', 3], ['sinfecha', null]].map(([title, n]) => ({ title, link: 'https://x.example/' + title, date: n === null ? 'hoy mismo' : d(n) }));
+  assert.deepEqual(sortNews(it, now).map(i => i.title), ['hoy', 'ayer', 'dos', 'tres', 'sem', 'mes']);               // 6 recientes: se descarta lo viejo y lo que no tiene fecha
+  const pocos = it.filter(i => ['viejo', 'mes', 'hoy'].includes(i.title));
+  assert.deepEqual(sortNews(pocos, now).map(i => i.title), ['hoy', 'mes', 'viejo']);                              // con pocas recientes se conservan, ordenadas
+});
+
+test('prices: ahora devuelve 10 años de rango y el cierre ajustado por dividendos', async () => {
+  const { handle } = await W(); const urls = [];
+  const f = async u => { urls.push(u); return json({ chart: { result: [{ meta: { currency: 'USD' }, timestamp: [1700000000, 1700086400, 1700172800],
+    indicators: { quote: [{ close: [10, 11, 12], high: [11, 12, 13], low: [9, 10, 11] }], adjclose: [{ adjclose: [9.5, null, 11.8] }] } }] } }); };
+  const d = await (await handle(get('/prices?symbol=DIA'), f)).json();
+  assert.match(urls[0], /range=10y/); assert.deepEqual(d.c, [10, 11, 12]); assert.deepEqual(d.a, [9.5, 11, 11.8]);
 });

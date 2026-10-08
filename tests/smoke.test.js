@@ -189,3 +189,39 @@ test('v3: catálogo de mercados, resumen de decisión, moneda, opciones, bonos y
   assert.match(d.getElementById('qh').textContent, /Bono/);
   assert.deepEqual(errores, []);
 });
+
+
+test('v3.1: noticias ordenadas por fecha con fecha legible, políticos sin enlace al Senado y con 4 cuentas de X, efectivo y fechas del periodo', async () => {
+  const API = 'https://panel.carlos.workers.dev';
+  const { JSDOM: J, VirtualConsole: VC } = require('jsdom');
+  const errores = [], vc = new VC(); vc.on('jsdomError', e => errores.push(e.message));
+  const dom = new J(fs.readFileSync(path.join(SITE, 'index.html'), 'utf8'), { url: 'http://localhost/', runScripts: 'dangerously', virtualConsole: vc, pretendToBeVisual: true });
+  const w = dom.window, d = w.document, ok = o => ({ ok: true, status: 200, json: async () => o });
+  const hoy = new Date().toUTCString(), viejo = new Date(Date.now() - 90 * 864e5).toUTCString(), semana = new Date(Date.now() - 6 * 864e5).toUTCString();
+  w.fetch = async u => {
+    if (u === 'config.json') return ok({ api: API });
+    if (u === 'data/crypto.json') return ok([]);
+    if (u.startsWith(API + '/prices')) return ok({ ...datos('DIA'), a: datos('DIA').c.map(x => x * 1.01), name: 'DIA Trust', currency: 'USD', exchange: 'PCX' });
+    if (u.startsWith(API + '/news')) return ok([{ title: 'Viejo', link: 'https://ok.example/1', src: 'F', date: viejo }, { title: 'Hoy', link: 'https://ok.example/2', src: 'F', date: hoy }, { title: 'Semana', link: 'https://ok.example/3', src: 'F', date: semana }]);
+    return { ok: false, status: 404, json: async () => ({}) };
+  };
+  for (const f of ['core.js', 'app.js']) { const el = d.createElement('script'); el.textContent = fs.readFileSync(path.join(SITE, f), 'utf8'); d.body.appendChild(el); }
+  const esperar = async fn => { for (let i = 0; i < 60 && !fn(); i++) await new Promise(r => setTimeout(r, 20)); };
+  await esperar(() => false);
+  [...d.querySelectorAll('#cat button')].find(b => b.textContent === 'SPY' || true);
+  const tk = d.getElementById('tk'); tk.value = 'dia'; tk.dispatchEvent(new w.Event('input'));
+  w.eval("loadSym('DIA','y')"); await esperar(() => d.querySelector('#b table'));
+  assert.match(d.getElementById('b').textContent, /\(del \d{4}-\d{2}-\d{2} al \d{4}-\d{2}-\d{2}\)/);
+  assert.match(d.getElementById('b').textContent, /Incluye dividendos/);
+  assert.ok(d.getElementById('cash') && d.getElementById('cash').value === '0');
+  d.getElementById('cash').value = '5'; d.getElementById('cash').dispatchEvent(new w.Event('input'));
+  assert.match(d.getElementById('b').textContent, /Veredicto en 4 preguntas/);
+  d.querySelector('#tabs [data-i="2"]').click(); await esperar(() => d.querySelectorAll('#nw a').length);
+  const tit = [...d.querySelectorAll('#nw a')].map(a => a.textContent);
+  assert.deepEqual(tit, ['Hoy', 'Semana', 'Viejo']);
+  assert.match(d.querySelector('#nw .row').textContent, /\(hoy\)/);
+  const enl = [...d.querySelectorAll('#po a')].map(a => a.href);
+  assert.ok(!enl.some(u => /senate\.gov/.test(u)));
+  for (const h of ['QuiverQuant', 'tradewithcong', 'BeatTheInsider', 'joinautopilot']) assert.ok(enl.includes('https://x.com/' + h), h);
+  assert.deepEqual(errores, []);
+});

@@ -31,7 +31,14 @@ const tag = (x, n) => { const m = x.match(new RegExp('<' + n + '[^>]*>([\\s\\S]*
 export function parseRss(xml) {
   return [...xml.matchAll(/<item>([\s\S]*?)<\/item>/g)].map(m => ({
     title: tag(m[1], 'title').slice(0, 200), link: tag(m[1], 'link'), src: (tag(m[1], 'source') || tag(m[1], 'News:Source')).slice(0, 60), date: tag(m[1], 'pubDate').slice(0, 40),
-  })).filter(i => i.title && /^https?:\/\//.test(i.link)).slice(0, 15);
+  })).filter(i => i.title && /^https?:\/\//.test(i.link));
+}
+
+// Ordena de la más reciente a la más antigua; si hay al menos 5 de los últimos 45 días, descarta las más viejas
+export function sortNews(items, now = Date.now()) {
+  const ts = i => { const t = Date.parse(i.date); return Number.isFinite(t) ? t : -Infinity; };
+  const s = [...items].sort((a, b) => ts(b) - ts(a)), rec = s.filter(i => ts(i) >= now - 45 * 864e5);
+  return (rec.length >= 5 ? rec : s).slice(0, 15);
 }
 
 export function parseAtom(xml) {
@@ -70,6 +77,7 @@ const UP = /\b(spik\w*|surg\w*|jump\w*|climb\w*|rall\w*|gain\w*|higher|advanc\w*
 const DOWN = /\b(drop\w*|fall\w*|fell|slump\w*|tumbl\w*|declin\w*|lower|slid\w*|sank|retreat\w*|plung\w*|rout|weak\w*|pressure)\b/i;
 const dir = s => { const u = UP.test(s), d = DOWN.test(s); return u && !d ? 'up' : d && !u ? 'down' : u && d ? 'mixed' : 'flat'; };
 // Reglas de sentido económico: tema del texto y activos que suelen moverse con él (+1 mismo sentido, -1 sentido contrario, 0 a vigilar)
+/** @type {[string, string, RegExp, [string, string, number][]][]} */
 const RULES = [
   ['yields', 'Rendimientos de bonos del Tesoro', /(treasur|ten-year|10-year|bond|note)[^.]*yields?|yields?[^.]*(treasur|ten-year|note|bond)/i,
     [['TLT', 'Bonos del Tesoro a 20+ años', -1], ['ITB', 'Constructoras de vivienda', -1], ['XLRE', 'Bienes raíces', -1], ['FUNO11.MX', 'FIBRA Uno', -1], ['XLU', 'Servicios públicos', -1]]],
@@ -111,7 +119,7 @@ async function news(f, q, s) {
   const det = [];
   for (const u of srcs) {
     const h = new URL(u).host;
-    try { const it = parseRss(await (await up(f, u)).text()); if (it.length) return { items: it }; det.push(h + ':vacio'); }
+    try { const it = sortNews(parseRss(await (await up(f, u)).text())); if (it.length) return { items: it }; det.push(h + ':vacio'); }
     catch (e) { det.push(h + ':' + ((/upstream (\d+)/.exec(String(e.message)) || [])[1] || 'error')); }
   }
   return { items: [], det };
@@ -132,16 +140,16 @@ export async function handle(req, f = fetch) {
     }
     if (p === '/prices') {
       if (!SYM.test(s)) return out({ error: 'simbolo invalido' }, 400, o);
-      const r = (await (await up(f, 'https://query1.finance.yahoo.com/v8/finance/chart/' + enc(s) + '?range=5y&interval=1d')).json()).chart.result[0];
-      const z = r.indicators.quote[0], t = [], c = [], h = [], l = [];
-      r.timestamp.forEach((ts, i) => { const k = z.close[i]; if (!(k > 0)) return; t.push(day(ts)); c.push(k); h.push(z.high[i] > 0 ? z.high[i] : k); l.push(z.low[i] > 0 ? z.low[i] : k); });
+      const r = (await (await up(f, 'https://query1.finance.yahoo.com/v8/finance/chart/' + enc(s) + '?range=10y&interval=1d')).json()).chart.result[0];
+      const z = r.indicators.quote[0], ac = (r.indicators.adjclose && r.indicators.adjclose[0] && r.indicators.adjclose[0].adjclose) || [], t = [], c = [], h = [], l = [], a = [];
+      r.timestamp.forEach((ts, i) => { const k = z.close[i]; if (!(k > 0)) return; t.push(day(ts)); c.push(k); a.push(ac[i] > 0 ? ac[i] : k); h.push(z.high[i] > 0 ? z.high[i] : k); l.push(z.low[i] > 0 ? z.low[i] : k); });
       const m = r.meta || {};
-      return out({ symbol: s.toUpperCase(), name: String(m.longName || m.shortName || s).slice(0, 80), currency: String(m.currency || '').slice(0, 5), exchange: String(m.exchangeName || '').slice(0, 20), type: String(m.instrumentType || '').slice(0, 12), t, c, h, l }, 200, o);
+      return out({ symbol: s.toUpperCase(), name: String(m.longName || m.shortName || s).slice(0, 80), currency: String(m.currency || '').slice(0, 5), exchange: String(m.exchangeName || '').slice(0, 20), type: String(m.instrumentType || '').slice(0, 12), t, c, a, h, l }, 200, o);
     }
     if (p === '/crypto') {
       const y = s.toUpperCase();
       if (!/^[A-Z0-9]{5,20}$/.test(y)) return out({ error: 'simbolo invalido' }, 400, o);
-      let start = Date.now() - 5 * 365 * 864e5, rows = [];
+      let start = Date.now() - 8 * 365 * 864e5, rows = [];
       for (let i = 0; i < 3; i++) {
         const pg = await (await up(f, 'https://data-api.binance.vision/api/v3/klines?interval=1d&limit=1000&symbol=' + y + '&startTime=' + Math.floor(start))).json();
         rows = rows.concat(pg);
